@@ -1,0 +1,1962 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { 
+  Users, MessageCircle, Phone, User, Settings, Bell, Lock, 
+  Palette, HelpCircle, LogOut, Home, Video, Send, 
+  Image as ImageIcon, Smile, Search, MoreVertical, 
+  ThumbsUp, Heart, Laugh, AlertCircle, 
+  Plus, X, Edit, Trash2, Moon, Sun,
+  ChevronLeft, Upload, Check, Camera, Mic, MicOff,
+  VideoOff, PhoneOff, Menu, Clock, MapPin
+} from 'lucide-react';
+
+// Stockage persistant
+const storage = window.storage;
+
+// Logo StudyConnect
+const Logo = ({ size = "large" }) => {
+  const dimensions = size === "large" ? { width: 200, height: 75 } : { width: 120, height: 45 };
+  
+  return (
+    <svg width={dimensions.width} height={dimensions.height} viewBox="0 0 800 300" style={{ display: 'block' }}>
+      <circle cx="80" cy="150" r="60" fill="#2962FF" />
+      <circle cx="220" cy="150" r="60" fill="#6495ED" />
+      <line x1="140" y1="150" x2="160" y2="150" stroke="#2962FF" strokeWidth="8" />
+      <text x="80" y="175" textAnchor="middle" fill="white" fontSize="80" fontWeight="bold" fontFamily="Arial, sans-serif">S</text>
+      <text x="220" y="175" textAnchor="middle" fill="white" fontSize="80" fontWeight="bold" fontFamily="Arial, sans-serif">C</text>
+      <text x="320" y="135" fill="#2962FF" fontSize="60" fontWeight="bold" fontFamily="Arial, sans-serif">Study</text>
+      <text x="320" y="195" fill="#6495ED" fontSize="60" fontWeight="bold" fontFamily="Arial, sans-serif">Connect</text>
+    </svg>
+  );
+};
+
+// Composant Emoji Picker simple
+const EmojiPicker = ({ onSelect, onClose }) => {
+  const emojis = ['😀', '😂', '❤️', '👍', '🎉', '🔥', '💯', '✨', '👏', '🙌', '💪', '🎓', '📚', '✍️', '💡', '🤔', '😊', '😍', '🥳', '🤗'];
+  
+  return (
+    <div style={{
+      position: 'absolute',
+      bottom: '100%',
+      left: 0,
+      background: 'white',
+      border: '1px solid #e5e7eb',
+      borderRadius: '12px',
+      padding: '12px',
+      display: 'grid',
+      gridTemplateColumns: 'repeat(5, 1fr)',
+      gap: '8px',
+      boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+      zIndex: 1000,
+      marginBottom: '8px'
+    }}>
+      {emojis.map(emoji => (
+        <button
+          key={emoji}
+          onClick={() => {
+            onSelect(emoji);
+            onClose();
+          }}
+          style={{
+            background: 'transparent',
+            border: 'none',
+            fontSize: '24px',
+            cursor: 'pointer',
+            padding: '8px',
+            borderRadius: '6px',
+            transition: 'background 0.2s'
+          }}
+          onMouseOver={(e) => e.target.style.background = '#f3f4f6'}
+          onMouseOut={(e) => e.target.style.background = 'transparent'}
+        >
+          {emoji}
+        </button>
+      ))}
+    </div>
+  );
+};
+
+// Composant principal
+export default function StudyConnect() {
+  const [screen, setScreen] = useState('welcome');
+  const [currentUser, setCurrentUser] = useState(null);
+  const [darkMode, setDarkMode] = useState(false);
+  const [activeTab, setActiveTab] = useState('feed');
+  
+  // États pour l'inscription
+  const [signupForm, setSignupForm] = useState({ nom: '', prenom: '', specialite: '' });
+  
+  // États pour les fonctionnalités
+  const [posts, setPosts] = useState([]);
+  const [newPost, setNewPost] = useState('');
+  const [conversations, setConversations] = useState([]);
+  const [selectedConversation, setSelectedConversation] = useState(null);
+  const [newMessage, setNewMessage] = useState('');
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [notifications, setNotifications] = useState(true);
+  const [onlineStatus, setOnlineStatus] = useState('visible');
+  const [showGuide, setShowGuide] = useState(false);
+  const [showAbout, setShowAbout] = useState(false);
+  const [userBio, setUserBio] = useState('');
+  const [editingBio, setEditingBio] = useState(false);
+  const [allUsers, setAllUsers] = useState([]);
+  
+  // États pour les appels
+  const [inCall, setInCall] = useState(false);
+  const [callType, setCallType] = useState('video'); // 'audio' ou 'video'
+  const [isMuted, setIsMuted] = useState(false);
+  const [isVideoOff, setIsVideoOff] = useState(false);
+  const [callWith, setCallWith] = useState(null);
+  const videoRef = useRef(null);
+  const [stream, setStream] = useState(null);
+  
+  // Charger les données au démarrage
+  useEffect(() => {
+    loadData();
+  }, []);
+  
+  const loadData = async () => {
+    try {
+      // Charger les posts
+      const postsData = await storage.get('posts');
+      if (postsData) {
+        setPosts(JSON.parse(postsData.value));
+      }
+      
+      // Charger les conversations
+      const convsData = await storage.get('conversations');
+      if (convsData) {
+        setConversations(JSON.parse(convsData.value));
+      }
+      
+      // Charger tous les utilisateurs
+      const usersData = await storage.get('all_users');
+      if (usersData) {
+        setAllUsers(JSON.parse(usersData.value));
+      }
+    } catch (error) {
+      console.log('Première initialisation');
+    }
+  };
+  
+  // Fonction d'inscription
+  const handleSignup = async () => {
+    if (!signupForm.nom.trim() || !signupForm.prenom.trim() || !signupForm.specialite.trim()) {
+      alert('Veuillez remplir tous les champs');
+      return;
+    }
+    
+    const user = {
+      id: Date.now(),
+      nom: signupForm.nom.trim(),
+      prenom: signupForm.prenom.trim(),
+      specialite: signupForm.specialite.trim().toUpperCase(),
+      dateInscription: new Date().toISOString(),
+      photo: null,
+      bio: '',
+      online: true
+    };
+    
+    // Ajouter l'utilisateur à la liste globale
+    const updatedUsers = [...allUsers, user];
+    setAllUsers(updatedUsers);
+    await storage.set('all_users', JSON.stringify(updatedUsers));
+    
+    setCurrentUser(user);
+    setScreen('app');
+  };
+  
+  // Créer un post
+  const createPost = async () => {
+    if (!newPost.trim()) return;
+    
+    const post = {
+      id: Date.now(),
+      author: currentUser,
+      content: newPost,
+      date: new Date().toISOString(),
+      reactions: { like: 0, love: 0, laugh: 0, sad: 0, wow: 0 },
+      comments: []
+    };
+    
+    const updatedPosts = [post, ...posts];
+    setPosts(updatedPosts);
+    await storage.set('posts', JSON.stringify(updatedPosts));
+    setNewPost('');
+  };
+  
+  // Réagir à un post
+  const reactToPost = async (postId, reaction) => {
+    const updatedPosts = posts.map(post => {
+      if (post.id === postId) {
+        return {
+          ...post,
+          reactions: {
+            ...post.reactions,
+            [reaction]: post.reactions[reaction] + 1
+          }
+        };
+      }
+      return post;
+    });
+    
+    setPosts(updatedPosts);
+    await storage.set('posts', JSON.stringify(updatedPosts));
+  };
+  
+  // Créer une nouvelle conversation
+  const createConversation = (otherUser) => {
+    const existingConv = conversations.find(c => 
+      c.participants.some(p => p.id === otherUser.id)
+    );
+    
+    if (existingConv) {
+      setSelectedConversation(existingConv);
+      return;
+    }
+    
+    const newConv = {
+      id: Date.now(),
+      participants: [currentUser, otherUser],
+      messages: [],
+      lastMessage: null
+    };
+    
+    const updatedConvs = [...conversations, newConv];
+    setConversations(updatedConvs);
+    storage.set('conversations', JSON.stringify(updatedConvs));
+    setSelectedConversation(newConv);
+  };
+  
+  // Envoyer un message
+  const sendMessage = async () => {
+    if (!newMessage.trim() || !selectedConversation) return;
+    
+    const message = {
+      id: Date.now(),
+      sender: currentUser,
+      content: newMessage,
+      date: new Date().toISOString(),
+      read: false
+    };
+    
+    const updatedConvs = conversations.map(conv => {
+      if (conv.id === selectedConversation.id) {
+        return {
+          ...conv,
+          messages: [...conv.messages, message],
+          lastMessage: message
+        };
+      }
+      return conv;
+    });
+    
+    setConversations(updatedConvs);
+    setSelectedConversation({
+      ...selectedConversation,
+      messages: [...selectedConversation.messages, message]
+    });
+    await storage.set('conversations', JSON.stringify(updatedConvs));
+    setNewMessage('');
+  };
+  
+  // Démarrer un appel
+  const startCall = async (user, type) => {
+    try {
+      const constraints = {
+        audio: true,
+        video: type === 'video'
+      };
+      
+      const mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
+      setStream(mediaStream);
+      
+      if (videoRef.current && type === 'video') {
+        videoRef.current.srcObject = mediaStream;
+      }
+      
+      setCallWith(user);
+      setCallType(type);
+      setInCall(true);
+    } catch (error) {
+      alert('Impossible d\'accéder à la caméra/micro. Vérifiez les autorisations.');
+      console.error('Erreur média:', error);
+    }
+  };
+  
+  // Terminer un appel
+  const endCall = () => {
+    if (stream) {
+      stream.getTracks().forEach(track => track.stop());
+    }
+    setInCall(false);
+    setCallWith(null);
+    setStream(null);
+    setIsMuted(false);
+    setIsVideoOff(false);
+  };
+  
+  // Toggle micro
+  const toggleMute = () => {
+    if (stream) {
+      stream.getAudioTracks().forEach(track => {
+        track.enabled = !track.enabled;
+      });
+      setIsMuted(!isMuted);
+    }
+  };
+  
+  // Toggle vidéo
+  const toggleVideo = () => {
+    if (stream && callType === 'video') {
+      stream.getVideoTracks().forEach(track => {
+        track.enabled = !track.enabled;
+      });
+      setIsVideoOff(!isVideoOff);
+    }
+  };
+  
+  // Mettre à jour la bio
+  const updateBio = async () => {
+    const updatedUser = { ...currentUser, bio: userBio };
+    setCurrentUser(updatedUser);
+    
+    const updatedUsers = allUsers.map(u => 
+      u.id === currentUser.id ? updatedUser : u
+    );
+    setAllUsers(updatedUsers);
+    await storage.set('all_users', JSON.stringify(updatedUsers));
+    setEditingBio(false);
+  };
+  
+  // Styles
+  const theme = {
+    primary: '#2962FF',
+    secondary: '#6495ED',
+    background: darkMode ? '#1a1a1a' : '#f5f7fa',
+    surface: darkMode ? '#2d2d2d' : '#ffffff',
+    text: darkMode ? '#ffffff' : '#1a1a1a',
+    textSecondary: darkMode ? '#b0b0b0' : '#6b7280',
+    border: darkMode ? '#404040' : '#e5e7eb'
+  };
+  
+  // Écran de bienvenue
+  if (screen === 'welcome') {
+    return (
+      <div style={{
+        minHeight: '100vh',
+        background: `linear-gradient(135deg, ${theme.primary} 0%, ${theme.secondary} 100%)`,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '20px',
+        fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+      }}>
+        <div style={{
+          background: 'white',
+          borderRadius: '24px',
+          padding: '48px',
+          maxWidth: '500px',
+          width: '100%',
+          boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
+          textAlign: 'center'
+        }}>
+          <div style={{ marginBottom: '32px' }}>
+            <Logo size="large" />
+          </div>
+          
+          <h1 style={{
+            fontSize: '32px',
+            fontWeight: 'bold',
+            color: theme.primary,
+            marginBottom: '16px'
+          }}>
+            Bienvenue sur StudyConnect
+          </h1>
+          
+          <p style={{
+            fontSize: '18px',
+            color: '#6b7280',
+            marginBottom: '40px'
+          }}>
+            Votre espace d'échange entre étudiants
+          </p>
+          
+          <button
+            onClick={() => setScreen('signup')}
+            style={{
+              background: theme.primary,
+              color: 'white',
+              padding: '16px 48px',
+              borderRadius: '12px',
+              border: 'none',
+              fontSize: '16px',
+              fontWeight: '600',
+              cursor: 'pointer',
+              transition: 'all 0.2s',
+              width: '100%'
+            }}
+            onMouseOver={(e) => e.target.style.transform = 'scale(1.02)'}
+            onMouseOut={(e) => e.target.style.transform = 'scale(1)'}
+          >
+            Commencer
+          </button>
+        </div>
+      </div>
+    );
+  }
+  
+  // Écran d'inscription
+  if (screen === 'signup') {
+    return (
+      <div style={{
+        minHeight: '100vh',
+        background: `linear-gradient(135deg, ${theme.primary} 0%, ${theme.secondary} 100%)`,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '20px',
+        fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+      }}>
+        <div style={{
+          background: 'white',
+          borderRadius: '24px',
+          padding: '48px',
+          maxWidth: '500px',
+          width: '100%',
+          boxShadow: '0 20px 60px rgba(0,0,0,0.3)'
+        }}>
+          <button
+            onClick={() => setScreen('welcome')}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: theme.primary,
+              cursor: 'pointer',
+              marginBottom: '24px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              fontSize: '14px'
+            }}
+          >
+            <ChevronLeft size={20} /> Retour
+          </button>
+          
+          <div style={{ marginBottom: '32px', textAlign: 'center' }}>
+            <Logo size="small" />
+          </div>
+          
+          <h2 style={{
+            fontSize: '28px',
+            fontWeight: 'bold',
+            color: '#1a1a1a',
+            marginBottom: '8px',
+            textAlign: 'center'
+          }}>
+            Créer mon profil
+          </h2>
+          
+          <p style={{
+            fontSize: '16px',
+            color: '#6b7280',
+            marginBottom: '32px',
+            textAlign: 'center'
+          }}>
+            Entrez vos informations pour commencer
+          </p>
+          
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+            <div>
+              <label style={{ display: 'block', marginBottom: '8px', fontSize: '14px', fontWeight: '600' }}>
+                Nom
+              </label>
+              <input
+                type="text"
+                value={signupForm.nom}
+                onChange={(e) => setSignupForm({...signupForm, nom: e.target.value})}
+                placeholder="Votre nom"
+                style={{
+                  width: '100%',
+                  padding: '14px',
+                  borderRadius: '8px',
+                  border: '1px solid #e5e7eb',
+                  fontSize: '16px',
+                  boxSizing: 'border-box'
+                }}
+              />
+            </div>
+            
+            <div>
+              <label style={{ display: 'block', marginBottom: '8px', fontSize: '14px', fontWeight: '600' }}>
+                Prénom
+              </label>
+              <input
+                type="text"
+                value={signupForm.prenom}
+                onChange={(e) => setSignupForm({...signupForm, prenom: e.target.value})}
+                placeholder="Votre prénom"
+                style={{
+                  width: '100%',
+                  padding: '14px',
+                  borderRadius: '8px',
+                  border: '1px solid #e5e7eb',
+                  fontSize: '16px',
+                  boxSizing: 'border-box'
+                }}
+              />
+            </div>
+            
+            <div>
+              <label style={{ display: 'block', marginBottom: '8px', fontSize: '14px', fontWeight: '600' }}>
+                Spécialité
+              </label>
+              <input
+                type="text"
+                value={signupForm.specialite}
+                onChange={(e) => setSignupForm({...signupForm, specialite: e.target.value})}
+                placeholder="Ex: SD, TL, EGP, AUDIT"
+                style={{
+                  width: '100%',
+                  padding: '14px',
+                  borderRadius: '8px',
+                  border: '1px solid #e5e7eb',
+                  fontSize: '16px',
+                  boxSizing: 'border-box'
+                }}
+              />
+            </div>
+            
+            <button
+              onClick={handleSignup}
+              style={{
+                background: theme.primary,
+                color: 'white',
+                padding: '16px',
+                borderRadius: '12px',
+                border: 'none',
+                fontSize: '16px',
+                fontWeight: '600',
+                cursor: 'pointer',
+                transition: 'all 0.2s',
+                marginTop: '8px'
+              }}
+            >
+              Entrer dans StudyConnect
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+  
+  // Interface d'appel
+  if (inCall) {
+    return (
+      <div style={{
+        minHeight: '100vh',
+        background: '#000',
+        display: 'flex',
+        flexDirection: 'column',
+        fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+      }}>
+        {/* Vidéo */}
+        <div style={{ flex: 1, position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          {callType === 'video' && !isVideoOff ? (
+            <video
+              ref={videoRef}
+              autoPlay
+              muted
+              playsInline
+              style={{
+                width: '100%',
+                height: '100%',
+                objectFit: 'cover'
+              }}
+            />
+          ) : (
+            <div style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: '24px'
+            }}>
+              <div style={{
+                width: '120px',
+                height: '120px',
+                borderRadius: '50%',
+                background: theme.primary,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: 'white',
+                fontSize: '48px',
+                fontWeight: 'bold'
+              }}>
+                {callWith?.prenom[0]}{callWith?.nom[0]}
+              </div>
+              <div style={{ textAlign: 'center', color: 'white' }}>
+                <h2 style={{ fontSize: '24px', marginBottom: '8px' }}>
+                  {callWith?.prenom} {callWith?.nom}
+                </h2>
+                <p style={{ color: '#9ca3af' }}>
+                  {callType === 'video' ? 'Appel vidéo' : 'Appel audio'} en cours...
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
+        
+        {/* Contrôles */}
+        <div style={{
+          padding: '32px',
+          display: 'flex',
+          justifyContent: 'center',
+          gap: '20px'
+        }}>
+          <button
+            onClick={toggleMute}
+            style={{
+              width: '56px',
+              height: '56px',
+              borderRadius: '50%',
+              background: isMuted ? '#dc2626' : 'rgba(255,255,255,0.2)',
+              border: 'none',
+              color: 'white',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}
+          >
+            {isMuted ? <MicOff size={24} /> : <Mic size={24} />}
+          </button>
+          
+          {callType === 'video' && (
+            <button
+              onClick={toggleVideo}
+              style={{
+                width: '56px',
+                height: '56px',
+                borderRadius: '50%',
+                background: isVideoOff ? '#dc2626' : 'rgba(255,255,255,0.2)',
+                border: 'none',
+                color: 'white',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}
+            >
+              {isVideoOff ? <VideoOff size={24} /> : <Video size={24} />}
+            </button>
+          )}
+          
+          <button
+            onClick={endCall}
+            style={{
+              width: '56px',
+              height: '56px',
+              borderRadius: '50%',
+              background: '#dc2626',
+              border: 'none',
+              color: 'white',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}
+          >
+            <PhoneOff size={24} />
+          </button>
+        </div>
+      </div>
+    );
+  }
+  
+  // Interface principale de l'application
+  if (screen === 'app' && currentUser) {
+    return (
+      <div style={{
+        minHeight: '100vh',
+        background: theme.background,
+        fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+        color: theme.text,
+        display: 'flex',
+        flexDirection: 'column'
+      }}>
+        {/* Header */}
+        <div style={{
+          background: theme.surface,
+          borderBottom: `1px solid ${theme.border}`,
+          padding: '16px 24px',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          position: 'sticky',
+          top: 0,
+          zIndex: 100
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+            <Logo size="small" />
+          </div>
+          
+          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+            <button
+              onClick={() => setDarkMode(!darkMode)}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                cursor: 'pointer',
+                color: theme.text,
+                display: 'flex',
+                alignItems: 'center'
+              }}
+            >
+              {darkMode ? <Sun size={20} /> : <Moon size={20} />}
+            </button>
+            
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '12px',
+              padding: '8px 16px',
+              borderRadius: '24px',
+              background: theme.background
+            }}>
+              <div style={{
+                width: '32px',
+                height: '32px',
+                borderRadius: '50%',
+                background: theme.primary,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: 'white',
+                fontWeight: 'bold',
+                position: 'relative'
+              }}>
+                {currentUser.prenom[0]}{currentUser.nom[0]}
+                {onlineStatus === 'visible' && (
+                  <div style={{
+                    position: 'absolute',
+                    bottom: 0,
+                    right: 0,
+                    width: '10px',
+                    height: '10px',
+                    background: '#10b981',
+                    border: `2px solid ${theme.surface}`,
+                    borderRadius: '50%'
+                  }} />
+                )}
+              </div>
+              <div>
+                <div style={{ fontSize: '14px', fontWeight: '600' }}>
+                  {currentUser.prenom} {currentUser.nom}
+                </div>
+                <div style={{ fontSize: '12px', color: theme.textSecondary }}>
+                  {currentUser.specialite}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        {/* Corps principal */}
+        <div style={{ flex: 1, display: 'flex' }}>
+          <div style={{ flex: 1, padding: '24px', overflowY: 'auto' }}>
+            {activeTab === 'feed' && (
+              <div style={{ maxWidth: '800px', margin: '0 auto' }}>
+                <h2 style={{ fontSize: '24px', fontWeight: 'bold', marginBottom: '24px' }}>
+                  Fil d'actualités
+                </h2>
+                
+                {/* Créer un post */}
+                <div style={{
+                  background: theme.surface,
+                  padding: '24px',
+                  borderRadius: '12px',
+                  marginBottom: '24px',
+                  border: `1px solid ${theme.border}`
+                }}>
+                  <textarea
+                    value={newPost}
+                    onChange={(e) => setNewPost(e.target.value)}
+                    placeholder="Quoi de neuf ?"
+                    style={{
+                      width: '100%',
+                      minHeight: '100px',
+                      padding: '12px',
+                      borderRadius: '8px',
+                      border: `1px solid ${theme.border}`,
+                      background: theme.background,
+                      color: theme.text,
+                      fontSize: '14px',
+                      resize: 'vertical',
+                      marginBottom: '12px',
+                      boxSizing: 'border-box'
+                    }}
+                  />
+                  
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div style={{ display: 'flex', gap: '12px' }}>
+                      <button style={{
+                        background: 'transparent',
+                        border: 'none',
+                        color: theme.textSecondary,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px'
+                      }}>
+                        <ImageIcon size={20} /> Photo
+                      </button>
+                    </div>
+                    
+                    <button
+                      onClick={createPost}
+                      disabled={!newPost.trim()}
+                      style={{
+                        background: newPost.trim() ? theme.primary : theme.border,
+                        color: 'white',
+                        padding: '10px 24px',
+                        borderRadius: '8px',
+                        border: 'none',
+                        cursor: newPost.trim() ? 'pointer' : 'not-allowed',
+                        fontWeight: '600'
+                      }}
+                    >
+                      Publier
+                    </button>
+                  </div>
+                </div>
+                
+                {/* Liste des posts */}
+                {posts.map(post => (
+                  <div
+                    key={post.id}
+                    style={{
+                      background: theme.surface,
+                      padding: '24px',
+                      borderRadius: '12px',
+                      marginBottom: '16px',
+                      border: `1px solid ${theme.border}`
+                    }}
+                  >
+                    <div style={{ display: 'flex', gap: '12px', marginBottom: '16px' }}>
+                      <div style={{
+                        width: '40px',
+                        height: '40px',
+                        borderRadius: '50%',
+                        background: theme.primary,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: 'white',
+                        fontWeight: 'bold'
+                      }}>
+                        {post.author.prenom[0]}{post.author.nom[0]}
+                      </div>
+                      
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: '600' }}>
+                          {post.author.prenom} {post.author.nom}
+                        </div>
+                        <div style={{ fontSize: '12px', color: theme.textSecondary }}>
+                          {post.author.specialite} • {new Date(post.date).toLocaleDateString('fr-FR')}
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <p style={{ marginBottom: '16px', lineHeight: '1.6' }}>
+                      {post.content}
+                    </p>
+                    
+                    <div style={{
+                      display: 'flex',
+                      gap: '16px',
+                      paddingTop: '16px',
+                      borderTop: `1px solid ${theme.border}`
+                    }}>
+                      <button
+                        onClick={() => reactToPost(post.id, 'like')}
+                        style={{
+                          background: 'transparent',
+                          border: 'none',
+                          color: theme.textSecondary,
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          fontSize: '14px'
+                        }}
+                      >
+                        👍 {post.reactions.like}
+                      </button>
+                      
+                      <button
+                        onClick={() => reactToPost(post.id, 'love')}
+                        style={{
+                          background: 'transparent',
+                          border: 'none',
+                          color: theme.textSecondary,
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          fontSize: '14px'
+                        }}
+                      >
+                        ❤️ {post.reactions.love}
+                      </button>
+                      
+                      <button
+                        onClick={() => reactToPost(post.id, 'laugh')}
+                        style={{
+                          background: 'transparent',
+                          border: 'none',
+                          color: theme.textSecondary,
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          fontSize: '14px'
+                        }}
+                      >
+                        😂 {post.reactions.laugh}
+                      </button>
+                      
+                      <button
+                        style={{
+                          background: 'transparent',
+                          border: 'none',
+                          color: theme.textSecondary,
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          fontSize: '14px'
+                        }}
+                      >
+                        💬 {post.comments.length} Commentaires
+                      </button>
+                    </div>
+                  </div>
+                ))}
+                
+                {posts.length === 0 && (
+                  <div style={{
+                    background: theme.surface,
+                    padding: '48px',
+                    borderRadius: '12px',
+                    textAlign: 'center',
+                    color: theme.textSecondary,
+                    border: `1px solid ${theme.border}`
+                  }}>
+                    <Home size={48} style={{ margin: '0 auto 16px', opacity: 0.3 }} />
+                    <p>Aucune publication pour le moment.</p>
+                    <p style={{ fontSize: '14px' }}>Soyez le premier à publier quelque chose !</p>
+                  </div>
+                )}
+              </div>
+            )}
+            
+            {activeTab === 'messages' && (
+              <div style={{ maxWidth: '1200px', margin: '0 auto', display: 'flex', gap: '20px', height: 'calc(100vh - 200px)' }}>
+                {/* Liste des conversations */}
+                <div style={{
+                  width: '320px',
+                  background: theme.surface,
+                  borderRadius: '12px',
+                  border: `1px solid ${theme.border}`,
+                  display: 'flex',
+                  flexDirection: 'column'
+                }}>
+                  <div style={{
+                    padding: '20px',
+                    borderBottom: `1px solid ${theme.border}`,
+                    fontWeight: '600',
+                    fontSize: '18px'
+                  }}>
+                    Messages
+                  </div>
+                  
+                  <div style={{ flex: 1, overflowY: 'auto' }}>
+                    {/* Nouveau message */}
+                    <div style={{ padding: '16px', borderBottom: `1px solid ${theme.border}` }}>
+                      <button
+                        onClick={() => {
+                          const otherUsers = allUsers.filter(u => u.id !== currentUser.id);
+                          if (otherUsers.length > 0) {
+                            createConversation(otherUsers[0]);
+                          } else {
+                            alert('Aucun autre utilisateur disponible');
+                          }
+                        }}
+                        style={{
+                          width: '100%',
+                          padding: '12px',
+                          background: theme.primary,
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '8px',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '8px',
+                          fontWeight: '600'
+                        }}
+                      >
+                        <Plus size={20} /> Nouveau message
+                      </button>
+                    </div>
+                    
+                    {/* Liste */}
+                    {conversations.map(conv => {
+                      const otherUser = conv.participants.find(p => p.id !== currentUser.id);
+                      return (
+                        <div
+                          key={conv.id}
+                          onClick={() => setSelectedConversation(conv)}
+                          style={{
+                            padding: '16px',
+                            borderBottom: `1px solid ${theme.border}`,
+                            cursor: 'pointer',
+                            background: selectedConversation?.id === conv.id ? theme.background : 'transparent'
+                          }}
+                        >
+                          <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                            <div style={{
+                              width: '48px',
+                              height: '48px',
+                              borderRadius: '50%',
+                              background: theme.primary,
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              color: 'white',
+                              fontWeight: 'bold'
+                            }}>
+                              {otherUser?.prenom[0]}{otherUser?.nom[0]}
+                            </div>
+                            <div style={{ flex: 1 }}>
+                              <div style={{ fontWeight: '600', marginBottom: '4px' }}>
+                                {otherUser?.prenom} {otherUser?.nom}
+                              </div>
+                              <div style={{ fontSize: '14px', color: theme.textSecondary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {conv.lastMessage?.content || 'Pas de messages'}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                    
+                    {conversations.length === 0 && (
+                      <div style={{
+                        padding: '48px 24px',
+                        textAlign: 'center',
+                        color: theme.textSecondary
+                      }}>
+                        <MessageCircle size={48} style={{ margin: '0 auto 16px', opacity: 0.3 }} />
+                        <p>Aucune conversation</p>
+                        <p style={{ fontSize: '14px' }}>Commencez à discuter !</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+                
+                {/* Zone de conversation */}
+                <div style={{
+                  flex: 1,
+                  background: theme.surface,
+                  borderRadius: '12px',
+                  border: `1px solid ${theme.border}`,
+                  display: 'flex',
+                  flexDirection: 'column'
+                }}>
+                  {selectedConversation ? (
+                    <>
+                      {/* Header conversation */}
+                      <div style={{
+                        padding: '20px',
+                        borderBottom: `1px solid ${theme.border}`,
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center'
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                          <div style={{
+                            width: '40px',
+                            height: '40px',
+                            borderRadius: '50%',
+                            background: theme.primary,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            color: 'white',
+                            fontWeight: 'bold'
+                          }}>
+                            {selectedConversation.participants.find(p => p.id !== currentUser.id)?.prenom[0]}
+                            {selectedConversation.participants.find(p => p.id !== currentUser.id)?.nom[0]}
+                          </div>
+                          <div>
+                            <div style={{ fontWeight: '600' }}>
+                              {selectedConversation.participants.find(p => p.id !== currentUser.id)?.prenom} {selectedConversation.participants.find(p => p.id !== currentUser.id)?.nom}
+                            </div>
+                            <div style={{ fontSize: '12px', color: theme.textSecondary }}>
+                              En ligne
+                            </div>
+                          </div>
+                        </div>
+                        
+                        <div style={{ display: 'flex', gap: '12px' }}>
+                          <button
+                            onClick={() => startCall(selectedConversation.participants.find(p => p.id !== currentUser.id), 'audio')}
+                            style={{
+                              background: 'transparent',
+                              border: 'none',
+                              color: theme.text,
+                              cursor: 'pointer',
+                              padding: '8px'
+                            }}
+                          >
+                            <Phone size={20} />
+                          </button>
+                          <button
+                            onClick={() => startCall(selectedConversation.participants.find(p => p.id !== currentUser.id), 'video')}
+                            style={{
+                              background: 'transparent',
+                              border: 'none',
+                              color: theme.text,
+                              cursor: 'pointer',
+                              padding: '8px'
+                            }}
+                          >
+                            <Video size={20} />
+                          </button>
+                        </div>
+                      </div>
+                      
+                      {/* Messages */}
+                      <div style={{ flex: 1, overflowY: 'auto', padding: '20px' }}>
+                        {selectedConversation.messages.map(msg => {
+                          const isMe = msg.sender.id === currentUser.id;
+                          return (
+                            <div
+                              key={msg.id}
+                              style={{
+                                display: 'flex',
+                                justifyContent: isMe ? 'flex-end' : 'flex-start',
+                                marginBottom: '16px'
+                              }}
+                            >
+                              <div style={{
+                                maxWidth: '70%',
+                                padding: '12px 16px',
+                                borderRadius: '16px',
+                                background: isMe ? theme.primary : theme.background,
+                                color: isMe ? 'white' : theme.text
+                              }}>
+                                {msg.content}
+                                <div style={{
+                                  fontSize: '12px',
+                                  opacity: 0.7,
+                                  marginTop: '4px'
+                                }}>
+                                  {new Date(msg.date).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                      
+                      {/* Input message */}
+                      <div style={{
+                        padding: '20px',
+                        borderTop: `1px solid ${theme.border}`,
+                        display: 'flex',
+                        gap: '12px',
+                        position: 'relative'
+                      }}>
+                        <button
+                          onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+                          style={{
+                            background: 'transparent',
+                            border: 'none',
+                            color: theme.textSecondary,
+                            cursor: 'pointer',
+                            padding: '8px'
+                          }}
+                        >
+                          <Smile size={24} />
+                        </button>
+                        
+                        {showEmojiPicker && (
+                          <EmojiPicker
+                            onSelect={(emoji) => setNewMessage(newMessage + emoji)}
+                            onClose={() => setShowEmojiPicker(false)}
+                          />
+                        )}
+                        
+                        <input
+                          type="text"
+                          value={newMessage}
+                          onChange={(e) => setNewMessage(e.target.value)}
+                          onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
+                          placeholder="Écrivez un message..."
+                          style={{
+                            flex: 1,
+                            padding: '12px 16px',
+                            borderRadius: '24px',
+                            border: `1px solid ${theme.border}`,
+                            background: theme.background,
+                            color: theme.text,
+                            fontSize: '14px'
+                          }}
+                        />
+                        
+                        <button
+                          onClick={sendMessage}
+                          disabled={!newMessage.trim()}
+                          style={{
+                            background: newMessage.trim() ? theme.primary : theme.border,
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '50%',
+                            width: '48px',
+                            height: '48px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            cursor: newMessage.trim() ? 'pointer' : 'not-allowed'
+                          }}
+                        >
+                          <Send size={20} />
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    <div style={{
+                      flex: 1,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: theme.textSecondary
+                    }}>
+                      <div style={{ textAlign: 'center' }}>
+                        <MessageCircle size={64} style={{ margin: '0 auto 16px', opacity: 0.3 }} />
+                        <p>Sélectionnez une conversation</p>
+                        <p style={{ fontSize: '14px' }}>ou créez-en une nouvelle</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+            
+            {activeTab === 'calls' && (
+              <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
+                <h2 style={{ fontSize: '24px', fontWeight: 'bold', marginBottom: '24px' }}>
+                  Appels
+                </h2>
+                
+                {/* Liste des utilisateurs pour appeler */}
+                <div style={{
+                  background: theme.surface,
+                  borderRadius: '12px',
+                  border: `1px solid ${theme.border}`,
+                  overflow: 'hidden'
+                }}>
+                  <div style={{
+                    padding: '20px',
+                    borderBottom: `1px solid ${theme.border}`,
+                    fontWeight: '600'
+                  }}>
+                    Démarrer un appel
+                  </div>
+                  
+                  <div style={{ padding: '16px' }}>
+                    {allUsers.filter(u => u.id !== currentUser.id).map(user => (
+                      <div
+                        key={user.id}
+                        style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          padding: '16px',
+                          borderRadius: '8px',
+                          marginBottom: '8px',
+                          background: theme.background
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                          <div style={{
+                            width: '48px',
+                            height: '48px',
+                            borderRadius: '50%',
+                            background: theme.primary,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            color: 'white',
+                            fontWeight: 'bold'
+                          }}>
+                            {user.prenom[0]}{user.nom[0]}
+                          </div>
+                          <div>
+                            <div style={{ fontWeight: '600' }}>
+                              {user.prenom} {user.nom}
+                            </div>
+                            <div style={{ fontSize: '14px', color: theme.textSecondary }}>
+                              {user.specialite}
+                            </div>
+                          </div>
+                        </div>
+                        
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                          <button
+                            onClick={() => startCall(user, 'audio')}
+                            style={{
+                              background: theme.primary,
+                              color: 'white',
+                              border: 'none',
+                              borderRadius: '8px',
+                              padding: '10px 16px',
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '6px'
+                            }}
+                          >
+                            <Phone size={18} /> Audio
+                          </button>
+                          
+                          <button
+                            onClick={() => startCall(user, 'video')}
+                            style={{
+                              background: theme.secondary,
+                              color: 'white',
+                              border: 'none',
+                              borderRadius: '8px',
+                              padding: '10px 16px',
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '6px'
+                            }}
+                          >
+                            <Video size={18} /> Vidéo
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                    
+                    {allUsers.filter(u => u.id !== currentUser.id).length === 0 && (
+                      <div style={{
+                        padding: '48px',
+                        textAlign: 'center',
+                        color: theme.textSecondary
+                      }}>
+                        <Phone size={48} style={{ margin: '0 auto 16px', opacity: 0.3 }} />
+                        <p>Aucun utilisateur disponible</p>
+                        <p style={{ fontSize: '14px' }}>Invitez des étudiants à rejoindre StudyConnect !</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+            
+            {activeTab === 'profile' && (
+              <div style={{ maxWidth: '800px', margin: '0 auto' }}>
+                <h2 style={{ fontSize: '24px', fontWeight: 'bold', marginBottom: '24px' }}>
+                  Mon Profil
+                </h2>
+                
+                <div style={{
+                  background: theme.surface,
+                  padding: '32px',
+                  borderRadius: '12px',
+                  marginBottom: '24px',
+                  border: `1px solid ${theme.border}`
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '24px', marginBottom: '32px' }}>
+                    <div style={{
+                      width: '80px',
+                      height: '80px',
+                      borderRadius: '50%',
+                      background: theme.primary,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: 'white',
+                      fontSize: '32px',
+                      fontWeight: 'bold',
+                      position: 'relative',
+                      cursor: 'pointer'
+                    }}>
+                      {currentUser.prenom[0]}{currentUser.nom[0]}
+                      <div style={{
+                        position: 'absolute',
+                        bottom: 0,
+                        right: 0,
+                        background: theme.secondary,
+                        borderRadius: '50%',
+                        width: '28px',
+                        height: '28px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        border: `2px solid ${theme.surface}`
+                      }}>
+                        <Camera size={14} />
+                      </div>
+                    </div>
+                    
+                    <div style={{ flex: 1 }}>
+                      <h3 style={{ fontSize: '24px', fontWeight: 'bold', marginBottom: '4px' }}>
+                        {currentUser.prenom} {currentUser.nom}
+                      </h3>
+                      <p style={{ color: theme.textSecondary }}>
+                        {currentUser.specialite}
+                      </p>
+                    </div>
+                  </div>
+                  
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '14px', fontWeight: '600', marginBottom: '8px' }}>
+                        Bio
+                      </label>
+                      {editingBio ? (
+                        <div>
+                          <textarea
+                            value={userBio}
+                            onChange={(e) => setUserBio(e.target.value)}
+                            placeholder="Parlez de vous..."
+                            style={{
+                              width: '100%',
+                              minHeight: '100px',
+                              padding: '12px',
+                              borderRadius: '8px',
+                              border: `1px solid ${theme.border}`,
+                              background: theme.background,
+                              color: theme.text,
+                              fontSize: '14px',
+                              resize: 'vertical',
+                              boxSizing: 'border-box',
+                              marginBottom: '8px'
+                            }}
+                          />
+                          <div style={{ display: 'flex', gap: '8px' }}>
+                            <button
+                              onClick={updateBio}
+                              style={{
+                                background: theme.primary,
+                                color: 'white',
+                                padding: '8px 16px',
+                                borderRadius: '6px',
+                                border: 'none',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '6px'
+                              }}
+                            >
+                              <Check size={16} /> Enregistrer
+                            </button>
+                            <button
+                              onClick={() => setEditingBio(false)}
+                              style={{
+                                background: theme.border,
+                                color: theme.text,
+                                padding: '8px 16px',
+                                borderRadius: '6px',
+                                border: 'none',
+                                cursor: 'pointer'
+                              }}
+                            >
+                              Annuler
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div
+                          onClick={() => {
+                            setUserBio(currentUser.bio || '');
+                            setEditingBio(true);
+                          }}
+                          style={{
+                            padding: '12px',
+                            background: theme.background,
+                            borderRadius: '8px',
+                            minHeight: '60px',
+                            cursor: 'pointer',
+                            color: currentUser.bio ? theme.text : theme.textSecondary
+                          }}
+                        >
+                          {currentUser.bio || 'Cliquez pour ajouter une bio...'}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                
+                {/* Paramètres */}
+                <div style={{
+                  background: theme.surface,
+                  borderRadius: '12px',
+                  border: `1px solid ${theme.border}`,
+                  overflow: 'hidden'
+                }}>
+                  <div style={{
+                    padding: '20px 24px',
+                    borderBottom: `1px solid ${theme.border}`,
+                    fontWeight: '600'
+                  }}>
+                    Paramètres
+                  </div>
+                  
+                  <div style={{ padding: '8px' }}>
+                    <div style={{
+                      padding: '16px',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      borderBottom: `1px solid ${theme.border}`
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <Bell size={20} color={theme.textSecondary} />
+                        <span>Notifications</span>
+                      </div>
+                      
+                      <label style={{ position: 'relative', display: 'inline-block', width: '50px', height: '24px' }}>
+                        <input
+                          type="checkbox"
+                          checked={notifications}
+                          onChange={(e) => setNotifications(e.target.checked)}
+                          style={{ opacity: 0, width: 0, height: 0 }}
+                        />
+                        <span style={{
+                          position: 'absolute',
+                          cursor: 'pointer',
+                          top: 0,
+                          left: 0,
+                          right: 0,
+                          bottom: 0,
+                          background: notifications ? theme.primary : theme.border,
+                          borderRadius: '24px',
+                          transition: '0.3s'
+                        }}>
+                          <span style={{
+                            position: 'absolute',
+                            content: '',
+                            height: '18px',
+                            width: '18px',
+                            left: notifications ? '28px' : '3px',
+                            bottom: '3px',
+                            background: 'white',
+                            borderRadius: '50%',
+                            transition: '0.3s'
+                          }} />
+                        </span>
+                      </label>
+                    </div>
+                    
+                    <div style={{
+                      padding: '16px',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      borderBottom: `1px solid ${theme.border}`
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <Lock size={20} color={theme.textSecondary} />
+                        <span>Statut en ligne</span>
+                      </div>
+                      
+                      <select
+                        value={onlineStatus}
+                        onChange={(e) => setOnlineStatus(e.target.value)}
+                        style={{
+                          padding: '6px 12px',
+                          borderRadius: '6px',
+                          border: `1px solid ${theme.border}`,
+                          background: theme.background,
+                          color: theme.text,
+                          cursor: 'pointer'
+                        }}
+                      >
+                        <option value="visible">Visible</option>
+                        <option value="invisible">Invisible</option>
+                      </select>
+                    </div>
+                    
+                    <div style={{
+                      padding: '16px',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      borderBottom: `1px solid ${theme.border}`
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <Palette size={20} color={theme.textSecondary} />
+                        <span>Thème</span>
+                      </div>
+                      
+                      <button
+                        onClick={() => setDarkMode(!darkMode)}
+                        style={{
+                          padding: '6px 12px',
+                          borderRadius: '6px',
+                          border: `1px solid ${theme.border}`,
+                          background: theme.background,
+                          color: theme.text,
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px'
+                        }}
+                      >
+                        {darkMode ? <><Moon size={16} /> Sombre</> : <><Sun size={16} /> Clair</>}
+                      </button>
+                    </div>
+                    
+                    <button
+                      onClick={() => setShowGuide(true)}
+                      style={{
+                        width: '100%',
+                        padding: '16px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '12px',
+                        background: 'transparent',
+                        border: 'none',
+                        color: theme.text,
+                        cursor: 'pointer',
+                        textAlign: 'left',
+                        borderBottom: `1px solid ${theme.border}`
+                      }}
+                    >
+                      <HelpCircle size={20} color={theme.textSecondary} />
+                      <span>Guide d'utilisation</span>
+                    </button>
+                    
+                    <button
+                      onClick={() => setShowAbout(true)}
+                      style={{
+                        width: '100%',
+                        padding: '16px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '12px',
+                        background: 'transparent',
+                        border: 'none',
+                        color: theme.text,
+                        cursor: 'pointer',
+                        textAlign: 'left',
+                        borderBottom: `1px solid ${theme.border}`
+                      }}
+                    >
+                      <AlertCircle size={20} color={theme.textSecondary} />
+                      <span>À propos</span>
+                    </button>
+                    
+                    <button
+                      onClick={() => {
+                        setCurrentUser(null);
+                        setScreen('welcome');
+                      }}
+                      style={{
+                        width: '100%',
+                        padding: '16px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '12px',
+                        background: 'transparent',
+                        border: 'none',
+                        color: '#dc2626',
+                        cursor: 'pointer',
+                        textAlign: 'left'
+                      }}
+                    >
+                      <LogOut size={20} />
+                      <span>Déconnexion</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+        
+        {/* Navigation en bas */}
+        <div style={{
+          background: theme.surface,
+          borderTop: `1px solid ${theme.border}`,
+          padding: '12px 0',
+          display: 'flex',
+          justifyContent: 'space-around',
+          position: 'sticky',
+          bottom: 0
+        }}>
+          <button
+            onClick={() => setActiveTab('feed')}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: activeTab === 'feed' ? theme.primary : theme.textSecondary,
+              cursor: 'pointer',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: '4px',
+              padding: '8px 16px'
+            }}
+          >
+            <Home size={24} />
+            <span style={{ fontSize: '12px' }}>Actualités</span>
+          </button>
+          
+          <button
+            onClick={() => setActiveTab('messages')}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: activeTab === 'messages' ? theme.primary : theme.textSecondary,
+              cursor: 'pointer',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: '4px',
+              padding: '8px 16px'
+            }}
+          >
+            <MessageCircle size={24} />
+            <span style={{ fontSize: '12px' }}>Messages</span>
+          </button>
+          
+          <button
+            onClick={() => setActiveTab('calls')}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: activeTab === 'calls' ? theme.primary : theme.textSecondary,
+              cursor: 'pointer',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: '4px',
+              padding: '8px 16px'
+            }}
+          >
+            <Phone size={24} />
+            <span style={{ fontSize: '12px' }}>Appels</span>
+          </button>
+          
+          <button
+            onClick={() => setActiveTab('profile')}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: activeTab === 'profile' ? theme.primary : theme.textSecondary,
+              cursor: 'pointer',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: '4px',
+              padding: '8px 16px'
+            }}
+          >
+            <User size={24} />
+            <span style={{ fontSize: '12px' }}>Profil</span>
+          </button>
+        </div>
+        
+        {/* Modal Guide */}
+        {showGuide && (
+          <div style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(0,0,0,0.7)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+            padding: '20px'
+          }}>
+            <div style={{
+              background: theme.surface,
+              borderRadius: '12px',
+              maxWidth: '600px',
+              width: '100%',
+              maxHeight: '80vh',
+              overflow: 'auto',
+              position: 'relative'
+            }}>
+              <div style={{
+                position: 'sticky',
+                top: 0,
+                background: theme.surface,
+                padding: '20px',
+                borderBottom: `1px solid ${theme.border}`,
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center'
+              }}>
+                <h3 style={{ fontSize: '20px', fontWeight: 'bold' }}>Guide d'utilisation</h3>
+                <button
+                  onClick={() => setShowGuide(false)}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    cursor: 'pointer',
+                    color: theme.textSecondary
+                  }}
+                >
+                  <X size={24} />
+                </button>
+              </div>
+              
+              <div style={{ padding: '24px', lineHeight: '1.8' }}>
+                <h4 style={{ fontWeight: 'bold', marginBottom: '12px' }}>✨ Bienvenue sur StudyConnect !</h4>
+                
+                <h4 style={{ fontWeight: 'bold', marginBottom: '12px', marginTop: '24px' }}>📰 Actualités</h4>
+                <p style={{ marginBottom: '16px', color: theme.textSecondary }}>
+                  • Créez des publications pour partager avec la communauté<br />
+                  • Réagissez avec des émojis (👍❤️😂)<br />
+                  • Commentez les publications des autres étudiants
+                </p>
+                
+                <h4 style={{ fontWeight: 'bold', marginBottom: '12px' }}>💬 Messages</h4>
+                <p style={{ marginBottom: '16px', color: theme.textSecondary }}>
+                  • Conversations privées avec d'autres étudiants<br />
+                  • Utilisez des emojis dans vos messages<br />
+                  • Notifications en temps réel
+                </p>
+                
+                <h4 style={{ fontWeight: 'bold', marginBottom: '12px' }}>📞 Appels</h4>
+                <p style={{ marginBottom: '16px', color: theme.textSecondary }}>
+                  • Appels audio et vidéo avec les étudiants<br />
+                  • Contrôlez votre micro et caméra pendant l'appel<br />
+                  • Parfait pour les études en groupe !
+                </p>
+                
+                <h4 style={{ fontWeight: 'bold', marginBottom: '12px' }}>👤 Profil</h4>
+                <p style={{ color: theme.textSecondary }}>
+                  • Personnalisez votre bio<br />
+                  • Gérez vos paramètres de confidentialité<br />
+                  • Changez entre mode clair et sombre
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+        
+        {/* Modal À propos */}
+        {showAbout && (
+          <div style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(0,0,0,0.7)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+            padding: '20px'
+          }}>
+            <div style={{
+              background: theme.surface,
+              borderRadius: '12px',
+              maxWidth: '600px',
+              width: '100%',
+              maxHeight: '80vh',
+              overflow: 'auto'
+            }}>
+              <div style={{
+                position: 'sticky',
+                top: 0,
+                background: theme.surface,
+                padding: '20px',
+                borderBottom: `1px solid ${theme.border}`,
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center'
+              }}>
+                <h3 style={{ fontSize: '20px', fontWeight: 'bold' }}>À propos</h3>
+                <button
+                  onClick={() => setShowAbout(false)}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    cursor: 'pointer',
+                    color: theme.textSecondary
+                  }}
+                >
+                  <X size={24} />
+                </button>
+              </div>
+              
+              <div style={{ padding: '24px', lineHeight: '1.8', textAlign: 'center' }}>
+                <div style={{ marginBottom: '24px' }}>
+                  <Logo size="small" />
+                </div>
+                
+                <h2 style={{ fontSize: '24px', fontWeight: 'bold', marginBottom: '8px' }}>
+                  StudyConnect
+                </h2>
+                <p style={{ color: theme.textSecondary, marginBottom: '24px' }}>
+                  Version 1.0 - Complète
+                </p>
+                
+                <div style={{
+                  textAlign: 'left',
+                  padding: '20px',
+                  background: theme.background,
+                  borderRadius: '8px'
+                }}>
+                  <h4 style={{ fontWeight: 'bold', marginBottom: '12px' }}>📖 Description</h4>
+                  <p style={{ color: theme.textSecondary, marginBottom: '16px' }}>
+                    StudyConnect est l'espace d'échange des étudiants de l'université ADONAÏ.
+                    Communiquez, partagez et collaborez !
+                  </p>
+                  
+                  <h4 style={{ fontWeight: 'bold', marginBottom: '12px' }}>🏫 Pour</h4>
+                  <p style={{ color: theme.textSecondary, marginBottom: '16px' }}>
+                    Université ADONAÏ - ISM
+                  </p>
+                  
+                  <h4 style={{ fontWeight: 'bold', marginBottom: '12px' }}>👨‍💻 Créé par</h4>
+                  <p style={{ color: theme.textSecondary, marginBottom: '16px' }}>
+                    HOUNLEKOUDE AMOUR MAHOUGNON<br />
+                    Étudiant en LICENCE 1 - ISM ADONAÏ
+                  </p>
+                  
+                  <h4 style={{ fontWeight: 'bold', marginBottom: '12px' }}>📧 Contact</h4>
+                  <p style={{ color: theme.textSecondary }}>
+                    Email : amourhounlekoude102@gmail.com<br />
+                    Facebook : Junior Blessing
+                  </p>
+                </div>
+                
+                <p style={{ fontSize: '12px', color: theme.textSecondary, marginTop: '24px' }}>
+                  © 2026 StudyConnect - ISM ADONAÏ
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+  
+  return null;
+}
